@@ -1,0 +1,33 @@
+let
+    // Connect to SQL Server
+    source_db = Sql.Database("YOUR_SERVER", "PROD_FOUNDATION_DB"),
+
+    dates_table = source_db{[Schema="dbo", Item="Dates"]}[Data],
+
+    // Select required columns
+    SelectedColumns = Table.SelectColumns(dates_table, {
+        "CalendarDate","CalendarDayName","CalendarDayOfWeek","CalendarWeekNumber",
+        "CalendarIsoWeek","CalendarMonth","CalendarMonthName","CalendarYear",
+        "CalendarQuarter","FiscalYear","FiscalQuarter","FiscalWeek",
+        "FiscalDay","Period","EnrollmentDayNumber"
+    }),
+
+    // Filter: CalendarDate <= today (equivalent to GETDATE())
+    FilteredRows = Table.SelectRows(SelectedColumns, each 
+        [CalendarDate] <= Date.From(DateTime.LocalNow())
+    ),
+
+    // Add +1 to CalendarIsoWeek
+    adjusted_IsoWeek = Table.TransformColumns(
+        FilteredRows,
+        {{"CalendarIsoWeek", each _ + 1, Int64.Type}}
+    ),
+    
+    friday_check = Table.AddColumn(adjusted_IsoWeek, "FriCheck", each if [CalendarDate] = Day.Friday then 1 else 0),
+    
+    filtered_rows = Table.SelectRows(friday_check, each [CalendarDate] > #datetime(2021, 1, 1, 0, 0, 0)),
+    
+    final_table = Table.RemoveColumns(filtered_rows,{"FriCheck"})
+
+in
+    final_table
