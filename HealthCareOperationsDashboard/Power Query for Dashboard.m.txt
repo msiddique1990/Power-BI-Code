@@ -1,20 +1,33 @@
-let 
+let
     // connection with data source
-    db_source = Sql.Database("172.24.16.137", "PROD_REPORTING_DB"),
+
+    db_source = Sql.Database("172.24.16.000", "PROD_REPORTING_DB"),
 
     lakehouse_table = db_source{[Schema="dbo", Item="Dashboard_Report_Agents"]}[Data],
+    
+    SelectedColumns = Table.SelectColumns(lakehouse_table, {
+    "AgentKey","Date","CalendarDate","SourceType","LanguageType","LeadType", "LeadSourceType","LeadSourceCostType","AgentTenure","Community","Site",
+    "CampaignId","AgentId","AgentName","AgentActiveStatus","Production_StartDate", "SupervisorId","SubUnit","SupervisorName","SiteRate","Leads","LeadCost",
+    "LeadCost_Original","Contacts","GrossSales","RevenueLTV", "ApprovedRevenue","NetRevenueLTV","TotalTalkTime","TotalWrapTime",
+    "TotalWaitTime","TotalTWWTime","TotalIdleTime","LoginDuration", "LunchBreakDuration","ScheduledBreakDuration","UnscheduledBreakDuration",
+    "New_Enrollment","Calc_Enrollment","Re_Enrollment","Inv_Enrollment", "Other_Enrollment","Role","TotalCalls","NoPlan","WrongNumber",
+    "AgentAppClosed","BCRB","NotEngaged","QAMTD","QA30Days", "NeverPaid","Paid","ChargedBack","RingTime","PreviewTime", "TotalActualWaitTime","AllBreaksDuration"
+    }),
+
+//  Replacing values
+
+    Replaced_Value = Table.ReplaceValue(SelectedColumns,"Bilingual","",Replacer.ReplaceText,{"SubUnit"}),
+
+//  rows include some name in SupervisorName column are not need.
+
+	Filtered_Rows = Table.SelectRows(#"Replaced Value", each ([SupervisorName] <> "Ben Porch" and [SupervisorName] <> "Danielle Ferreris" and [SupervisorName] <> "Iqbal Rizvi" and [SupervisorName] <> "Mary Darlene Keller" and [SupervisorName] <> "Rachel Honoway"))
 
     // Filter rows (WHERE clause)
-    Filtered = Table.SelectRows(lakehouse_table, each 
+    Filtered = Table.SelectRows(Filtered_Rows, each 
         [CalendarDate] >= #date(2021,10,15) and
         not List.Contains({"NIC","LHR"," "}, [Site]) and
         [Role] = "agent" and
         not List.Contains({"Customer Service","IT","TLSM"}, [SubUnit])
-    ),
-
-    // Start of month (equivalent to DATEFROMPARTS logic)
-    AddMonthStart = Table.AddColumn(Filtered, "MonthStart", each 
-        #date(Date.Year([CalendarDate]), Date.Month([CalendarDate]), 1), type date
     ),
 
     // column for No_of_days (DATEDIFF)
@@ -44,7 +57,7 @@ let
     Goals = Source{[Schema="dbo", Item="SPD_SPH_GoalsByTenure"]}[Data],
     Yield = Source{[Schema="dbo", Item="Yield_Goal_by_Tenure"]}[Data],
     Leads = Source{[Schema="dbo", Item="AVG_IB_LEADS_BY_AGENT_BY_DATE"]}[Data],
-    Agents = Sql.Database("172.24.16.137", "PROD_FOUNDATION_DB"){[Schema="dbo", Item="agents"]}[Data],
+    Agents = Sql.Database("172.24.16.000", "PROD_FOUNDATION_DB"){[Schema="dbo", Item="agents"]}[Data],
 
     // Join with Goals table
     MergeGoals = Table.NestedJoin(
