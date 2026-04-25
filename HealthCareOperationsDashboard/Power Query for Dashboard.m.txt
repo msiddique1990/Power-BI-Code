@@ -1,4 +1,4 @@
-let
+let 
     // connection with data source
     db_source = Sql.Database("172.24.16.137", "PROD_REPORTING_DB"),
 
