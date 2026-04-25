@@ -1,0 +1,60 @@
+let
+    // Define date boundaries
+    start_date = #date(2020, 1, 1),
+    end_date = Date.From(DateTime.LocalNow()),
+
+    // Create initial list from start_date to end_date (numeric representation of dates)
+    date_list = {Number.From(start_date) .. Number.From(end_date)},
+
+    // Convert list into a table
+    to_table = Table.FromList(date_list, Splitter.SplitByNothing(), {"start_date"}),
+
+    // Ensure correct data type
+    change_type = Table.TransformColumnTypes(to_table, {{"start_date", type date}}),
+
+    // Add end_date column (same value for all rows)
+    add_end_date = Table.AddColumn(change_type, "end_date", each end_date, type date),
+
+    // Generate a full date range list for each row (from start_date to end_date)
+    add_date_list = 
+        Table.AddColumn(
+            add_end_date,
+            "date",
+            each {Number.From([start_date]) .. Number.From([end_date])}
+        ),
+
+    // ------------------------------------------------------------
+    // Expand the generated date lists into individual rows
+    // Result: one row per day between start_date and end_date
+    // This is the core step that transforms the table into a proper date dimension
+    // ------------------------------------------------------------
+    expand_date = Table.ExpandListColumn(add_date_list, "date"),
+
+    change_date_type = Table.TransformColumnTypes(expand_date, {{"date", type date}}),
+
+    add_year = Table.AddColumn(change_date_type, "year", each Date.Year([date]), Int64.Type),
+
+    add_quarter = Table.AddColumn(add_year, "quarter", each Date.QuarterOfYear([date]), Int64.Type),
+
+    add_month = Table.AddColumn(add_quarter, "month", each Date.Month([date]), Int64.Type),
+
+    add_month_name = Table.AddColumn(add_month, "month_name", each Date.MonthName([date]), type text),
+
+    add_short_month = Table.AddColumn(add_month_name, "short_month_name", each Text.Start([month_name], 3), type text),
+
+    remove_dates = Table.RemoveColumns(add_short_month, {"start_date", "end_date"}),
+
+    year_to_text = Table.TransformColumnTypes(remove_dates, {{"year", type text}}),
+
+    add_mon_yr = Table.AddColumn(year_to_text, "mon_yr", each [short_month_name] & Text.End([year], 2), type text),
+
+    add_day = Table.AddColumn(add_mon_yr, "day_of_month", each Date.Day([date]), Int64.Type),
+
+    day_to_text = Table.TransformColumnTypes(add_day, {{"day_of_month", type text}}),
+
+    add_mon_day = Table.AddColumn(day_to_text, "mon_day", each [short_month_name] & "-" & [day_of_month], type text),
+
+    add_index = Table.AddIndexColumn(add_mon_day, "index", 1, 1, Int64.Type)
+
+in
+    add_index
