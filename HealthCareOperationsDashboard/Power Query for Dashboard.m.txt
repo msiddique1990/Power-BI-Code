@@ -13,7 +13,7 @@ let
     "New_Enrollment","Calc_Enrollment","Re_Enrollment","Inv_Enrollment", "Other_Enrollment","Role","TotalCalls","NoPlan","WrongNumber",
     "AgentAppClosed","BCRB","NotEngaged","QAMTD","QA30Days", "NeverPaid","Paid","ChargedBack","RingTime","PreviewTime", "TotalActualWaitTime","AllBreaksDuration"
     }),
-
+ 
 //  Replacing values
 
     Replaced_Value = Table.ReplaceValue(SelectedColumns,"Bilingual","",Replacer.ReplaceText,{"SubUnit"}),
