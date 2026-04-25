@@ -1,0 +1,140 @@
+let
+    // Source (replace with your actual source)
+    source = userLogs_table,
+
+    // Filter date range
+    filter_dates =
+        Table.SelectRows(
+            source,
+            each Date.From([event_date]) >= #date(2025, 1, 1)
+                and Date.From([event_date]) <= Date.From(DateTime.LocalNow())
+        ),
+
+    // Sort for correct sequencing
+    sort_data =
+        Table.Sort(filter_dates, {{"agent_id", Order.Ascending}, {"event_date", Order.Ascending}}),
+
+    // Group by agent to simulate partition
+    group_agent =
+        Table.Group(
+            sort_data,
+            {"agent_id"},
+            {
+                {
+                    "data",
+                    (t) =>
+                        let
+                            add_index = Table.AddIndexColumn(t, "idx", 0, 1, Int64.Type),
+
+                            // Create previous event column (Similar to LAG)
+                            add_prev =
+                                Table.AddColumn(
+                                    add_index,
+                                    "prev_event",
+                                    each try add_index[event]{[idx]-1} otherwise null,
+                                    type text
+                                ),
+
+                            // Flag start of LOGIN sequence
+                            add_flag =
+                                Table.AddColumn(
+                                    add_prev,
+                                    "login_flag",
+                                    each if [event] = "LOGIN"
+                                        and ([prev_event] = null or [prev_event] <> "LOGIN")
+                                    then 1 else 0,
+                                    Int64.Type
+                                ),
+
+                            // Cumulative sum (simulate SUM OVER)
+                            add_group =
+                                Table.AddColumn(
+                                    add_flag,
+                                    "login_group",
+                                    (r) =>
+                                        List.Sum(
+                                            List.FirstN(add_flag[login_flag], r[idx] + 1)
+                                        ),
+                                    Int64.Type
+                                )
+                        in
+                            add_group
+                }
+            }
+        ),
+
+    // Expand back
+    expand_data =
+        Table.ExpandTableColumn(
+            group_agent,
+            "data",
+            {"event_date", "event", "prev_event", "login_group"}
+        ),
+
+    // Group to get login/logout times
+    group_sessions =
+        Table.Group(
+            expand_data,
+            {"agent_id", "login_group"},
+            {
+                {
+                    "LoginTime",
+                    each List.Min(
+                        List.Select([event_date], (d, i) => [event]{i} = "LOGIN")
+                    ),
+                    type datetime
+                },
+                {
+                    "LogoutTime",
+                    each List.Max(
+                        List.Select([event_date], (d, i) => [event]{i} = "LOGOUT")
+                    ),
+                    type datetime
+                }
+            }
+        ),
+
+    // Remove incomplete sessions
+    filter_valid =
+        Table.SelectRows(
+            group_sessions,
+            each [LoginTime] <> null and [LogoutTime] <> null
+        ),
+
+    // Duration in seconds
+    add_duration =
+        Table.AddColumn(
+            filter_valid,
+            "DurationInSeconds",
+            each Duration.TotalSeconds([LogoutTime] - [LoginTime]),
+            Int64.Type
+        ),
+
+    // Final aggregation per day
+    add_login_date =
+        Table.AddColumn(
+            add_duration,
+            "LoginDate",
+            each Date.From([LoginTime]),
+            type date
+        ),
+
+    final_group =
+        Table.Group(
+            add_login_date,
+            {"agent_id", "LoginDate"},
+            {
+                {"Duration", each List.Sum([DurationInSeconds]) / 3600.0, type number},
+                {
+                    "LoginDuration",
+                    each Time.From(#duration(0, 0, 0, List.Sum([DurationInSeconds]))),
+                    type time
+                }
+            }
+        ),
+
+    sort_final =
+        Table.Sort(final_group, {{"agent_id", Order.Ascending}, {"LoginDate", Order.Ascending}})
+
+in
+    sort_final
