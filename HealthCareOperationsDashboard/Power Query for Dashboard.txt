@@ -1,0 +1,97 @@
+let
+    // connection with data source
+    db_source = Sql.Database("172.24.16.137", "PROD_REPORTING_DB"),
+
+    lakehouse_table = db_source{[Schema="dbo", Item="Dashboard_Report_Agents"]}[Data],
+
+    // Filter rows (WHERE clause)
+    Filtered = Table.SelectRows(lakehouse_table, each 
+        [CalendarDate] >= #date(2021,10,15) and
+        not List.Contains({"NIC","LHR"," "}, [Site]) and
+        [Role] = "agent" and
+        not List.Contains({"Customer Service","IT","TLSM"}, [SubUnit])
+    ),
+
+    // Start of month (equivalent to DATEFROMPARTS logic)
+    AddMonthStart = Table.AddColumn(Filtered, "MonthStart", each 
+        #date(Date.Year([CalendarDate]), Date.Month([CalendarDate]), 1), type date
+    ),
+
+    // column for No_of_days (DATEDIFF)
+    
+    AddNoOfDays = Table.AddColumn(AddMonthStart, "No_of_days", each 
+        Duration.Days([MonthStart] - Date.From([Production_StartDate])), Int64.Type
+    ),
+
+    // calculate Tenure_SOM (Start of Month)
+    AddTenure = Table.AddColumn(AddNoOfDays, "Tenure_SOM", each 
+        if [No_of_days] = 0 then "Training"
+        else if [Production_StartDate] = null then "No PSD Found"
+        else if [No_of_days] < 0 then "1-Nesting"
+        else if [No_of_days] < 31 then "2-(1-30 Days)"
+        else if [No_of_days] < 61 then "3-(31-60 Days)"
+        else if [No_of_days] < 91 then "4-(61-90 Days)"
+        else if [No_of_days] < 181 then "5-(91-180 Days)"
+        else if [No_of_days] < 366 then "6-(181-365 Days)"
+        else if [No_of_days] < 731 then "7-(1-2 Years)"
+        else "8-(2 Plus Years)"
+    ),
+
+    // Week Number Columns starting Monday
+    AddWeek = Table.AddColumn(AddTenure, "week_num", each Date.WeekOfYear([CalendarDate], Day.Monday) + 1),
+
+    // Load other relevant tables
+    Goals = Source{[Schema="dbo", Item="SPD_SPH_GoalsByTenure"]}[Data],
+    Yield = Source{[Schema="dbo", Item="Yield_Goal_by_Tenure"]}[Data],
+    Leads = Source{[Schema="dbo", Item="AVG_IB_LEADS_BY_AGENT_BY_DATE"]}[Data],
+    Agents = Sql.Database("172.24.16.137", "PROD_FOUNDATION_DB"){[Schema="dbo", Item="agents"]}[Data],
+
+    // Join with Goals table
+    MergeGoals = Table.NestedJoin(
+        AddWeek,
+        {"Tenure_SOM"},
+        Goals,
+        {"Tenure_SOM"},
+        "GoalsData",
+        JoinKind.LeftOuter
+    ),
+    ExpandGoals = Table.ExpandTableColumn(MergeGoals, "GoalsData", {"SPD_Gross","SPD_Adj","SPH_Gross","SPH_Adj"}),
+
+    // Join with Leads based on agent_id and CalendarDate to get leads.
+    MergeLeads = Table.NestedJoin(
+        ExpandGoals,
+        {"AgentId","CalendarDate"},
+        Leads,
+        {"agentid","calldate"},
+        "LeadsData",
+        JoinKind.LeftOuter
+    ),
+    ExpandLeads = Table.ExpandTableColumn(MergeLeads, "LeadsData", {"Ob_leads","Ib_Leads"}),
+
+    // Agent Leads calculation
+    AddAgentLeads = Table.AddColumn(ExpandLeads, "Agent_leads", each 
+        (if [Ob_leads]=null then 0 else [Ob_leads]) +
+        (if [Ib_Leads]=null then 0 else [Ib_Leads])
+    ),
+
+    // Agents table with filter only for role=agent.
+    
+    FilterAgents = Table.SelectRows(Agents, each 
+        [Production_StartDate] <> null and
+        [TermDate] <> null and
+        [role] = "Agent"
+    ),
+
+    // Join to get TermDate
+    MergeAgents = Table.NestedJoin(
+        AddAgentLeads,
+        {"AgentId"},
+        FilterAgents,
+        {"id"},
+        "AgentInfo",
+        JoinKind.LeftOuter
+    ),
+    Final_table = Table.ExpandTableColumn(MergeAgents, "AgentInfo", {"TermDate"})
+
+in
+    Final_table
