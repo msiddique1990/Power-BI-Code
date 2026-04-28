@@ -1,0 +1,103 @@
+﻿AgentsWithSales = CALCULATE(DISTINCTCOUNT(Sales[agent_id]), Sales[sales]>0, Sales[policy_status] IN { "active", "approved","issued","submitted" })
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+FE Policy = CALCULATE([Policy Sale], Agents[agency] = "dhfe")
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Policy Sale = 
+CALCULATE(
+	SUM('Sales'[sales]),
+	Sales[policy_status] IN { "active", "approved","issued","submitted" }
+)
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Active Time = 
+VAR TotalSeconds = CALCULATE(SUM(CallsData[dead_sec]),CallsData[row_count]=1)+CALCULATE(SUM(CallsData[dispo_sec]),CallsData[row_count]=1)+CALCULATE(SUM(CallsData[pause_sec]),CallsData[row_count]=1)+SUM(CallsData[TotalTalkTime])+CALCULATE(SUM(CallsData[wait_agents]),CallsData[row_count]=1)
+VAR Hours = INT(TotalSeconds / 3600)
+VAR Minutes = INT(MOD(TotalSeconds, 3600) / 60)
+VAR Seconds = MOD(TotalSeconds, 60)
+
+RETURN
+FORMAT(Hours, "00") & ":" &
+FORMAT(Minutes, "00") & ":" &
+FORMAT(Seconds, "00")
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Actual Wrap To Talk = DIVIDE(CALCULATE(SUM(CallsData[dispo_sec]),CallsData[row_count]=1),SUM(CallsData[TotalTalkTime]),0)
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Agent Name = 
+VAR SelectedAgentId = SELECTEDVALUE(CallsData[agent_id])
+VAR AgentName = 
+    CALCULATE(
+        LASTNONBLANK(Agents[AgentName], 1),
+        Agents[AgentId]= SelectedAgentId
+    )
+RETURN
+    AgentName
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Ave Handle Time = 
+
+VAR TotalSeconds = DIVIDE(
+CALCULATE(SUM(CallsData[dead_sec]),CallsData[row_count]=1)+CALCULATE(SUM(CallsData[dispo_sec]),CallsData[row_count]=1)+SUM(CallsData[TotalTalkTime])
+, SUM(CallsData[InboundCalls])+SUM(CallsData[OutboundCalls]), 0)
+
+VAR Hours = INT(TotalSeconds/3600)
+VAR Minutes = INT(MOD(TotalSeconds,3600)/60)
+VAR Seconds = MOD(TotalSeconds,60)
+RETURN
+FORMAT(Hours,"00") & ":" & FORMAT(Minutes,"00") & ":" & FORMAT(Seconds,"00")
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Avg Talk Time = 
+
+VAR TotalSeconds = DIVIDE(SUM(CallsData[TotalTalkTime]),SUM(CallsData[InboundCalls])+SUM(CallsData[OutboundCalls]),0)
+VAR Hours = INT(TotalSeconds / 3600)
+VAR Minutes = INT(MOD(TotalSeconds, 3600) / 60)
+VAR Seconds = MOD(TotalSeconds, 60)
+
+RETURN
+FORMAT(Hours, "00") & ":" &
+FORMAT(Minutes, "00") & ":" &
+FORMAT(Seconds, "00")
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+Paid Time = 
+
+VAR TotalSeconds = CALCULATE(SUM(CallsData[dispo_sec]),CallsData[row_count]=1)+SUM(CallsData[TotalTalkTime])+CALCULATE(SUM(CallsData[wait_agents]),CallsData[row_count]=1)
+VAR Hours = INT(TotalSeconds / 3600)
+VAR Minutes = INT(MOD(TotalSeconds, 3600) / 60)
+VAR Seconds = MOD(TotalSeconds, 60)
+
+RETURN
+FORMAT(Hours, "00") & ":" &
+FORMAT(Minutes, "00") & ":" &
+FORMAT(Seconds, "00")
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+WaitToActive = DIVIDE(
+CALCULATE(SUM(CallsData[wait_agents]),CallsData[row_count]=1)
+,CALCULATE(SUM(CallsData[dead_sec]),CallsData[row_count]=1)+CALCULATE(SUM(CallsData[dispo_sec]),CallsData[row_count]=1)+CALCULATE(SUM(CallsData[pause_sec]),CallsData[row_count]=1)+SUM(CallsData[TotalTalkTime])+SUM(CallsData[wait_callsLog]),0)
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+% to Total = 
+DIVIDE(
+    SUM(CallsbyHour[unhandledCalls]),
+    CALCULATE(
+        SUM(CallsbyHour[unhandledCalls]),
+        ALL(CallsbyHour[campaign_name])
+    ),
+    0
+)
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+% to Total_status_name = 
+DIVIDE(
+    SUM(CallsbyHour[unhandledCalls]),
+    CALCULATE(
+        SUM(CallsbyHour[unhandledCalls]),
+        ALL(CallsbyHour[status_name])
+    ),
+    0
+)
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+//Note: All the formulas used in the report are not shown here.
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+
